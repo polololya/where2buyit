@@ -13,7 +13,7 @@ def SimilarItem(target_embeding,dataset_embedings):
 #--------метрики--------
 def PrecisionK(similarity5,positive_index):
     relevant=len(set(similarity5.index)&set(positive_index))
-    return relevant/len(positive_index)
+    return relevant/len(similarity5)
 def AvgPrecisionK (target_embedings,dataset_embedings,positive_indices):
     n=len(target_embedings)
     k=np.zeros((n))
