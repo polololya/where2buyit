@@ -22,7 +22,7 @@ def AvgPrecisionK(target_embedings,dataset_embedings,positive_indices):
     n = len(target_embedings)
     k = np.zeros((n))
     for i in range(n):
-        k[i]=PrecisionK(similarity5.iloc[i], positive_indices[i])
+        k[i]=PrecisionK(similarity5.iloc[i], positive_indices.iloc[i])
     k=sum(k)/n
     #по идее 24-27 быстрее, если target'ов много
     #k=np.array(list(map(lambda i: PrecisionK1(similarity5.iloc[i],positive_indices[i]),similarity5.index)))
