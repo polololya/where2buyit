@@ -14,17 +14,15 @@ def SimilarItem(target_embeding, dataset_embedings):
 
 
 # --------метрики--------
-PrecisionK=lambda similarity5,positive_index: len(set(similarity5.index)&set(positive_index))/len(similarity5)
+PrecisionK=lambda similarity5_index,positive_index: len(set(similarity5_index)&set(positive_index))/len(similarity5_index)
 #PrecisionK работает только для одного целевого эмбеддинга, принимает вторым значением индексы реальных похожих предметов
-def PrecisionK1(similarity5_indices,positive_indiсеs):#работает для нескольких целевых
-    return len(set(similarity5_indices)&set(positive_indiсеs))/len(similarity5_indices)
 def AvgPrecisionK(target_embedings,dataset_embedings,positive_indices):
     value_similarity=pd.DataFrame(np.squeeze(sl.cosine_similarity(target_embedings, dataset_embedings)))
     similarity5=pd.DataFrame(np.argsort(value_similarity)).iloc[:,-5:]
     n = len(target_embedings)
     k = np.zeros((n))
     for i in range(n):
-        k[i]=PrecisionK1(similarity5.iloc[i], positive_indices[i])
+        k[i]=PrecisionK(similarity5.iloc[i], positive_indices[i])
     k=sum(k)/n
     #по идее 24-27 быстрее, если target'ов много
     #k=np.array(list(map(lambda i: PrecisionK1(similarity5.iloc[i],positive_indices[i]),similarity5.index)))
@@ -52,7 +50,7 @@ print("Столбцы не потерялись, SimilarItem работает, �
 positive_index=np.random.choice(dataset.index,np.random.randint(1,len(dataset)),replace = False)
 #print(positive_index)
 start_time = time.time()
-K=PrecisionK(similarity5,positive_index)
+K=PrecisionK(similarity5.index,positive_index)
 print("--- %s seconds ---" % (time.time() - start_time))
 print(K, ' - значение метрики для одного целевого изображения')
 targets=df.iloc[np.random.randint(len(df),size=np.random.randint(len(df))),:emb_size]#рандомные целевые векторы
