@@ -2,7 +2,6 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import optimizers
 from tensorflow.keras import metrics
-from tensorflow.keras import Model
 from tensorflow.keras.applications import resnet
 
 
@@ -22,7 +21,7 @@ class DistanceLayer(layers.Layer):
         return ap_distance, an_distance
 
 
-class SiameseModel(Model):
+class SiameseModel(tf.keras.Model):
     """The Siamese Network model with a custom training and testing loops.
 
     Computes the triplet loss using the three embeddings produced by the
@@ -101,7 +100,7 @@ class Model:
         dense2 = layers.BatchNormalization()(dense2)
         output = layers.Dense(256)(dense2)
 
-        embedding = Model(base_cnn.input, output, name="Embedding")
+        embedding = tf.keras.Model(base_cnn.input, output, name="Embedding")
 
         trainable = False
         for layer in base_cnn.layers:
@@ -119,18 +118,17 @@ class Model:
             embedding(resnet.preprocess_input(negative_input)),
         )
 
-        self.siamese_network = Model(
+        self.siamese_network = tf.keras.Model(
             inputs=[anchor_input, positive_input, negative_input], outputs=distances
         )
 
     def get_siamese_network(self):
         return self.siamese_network
 
-    @staticmethod
-    def train(siamese_network, train_data, val_data):
-        siamese_model = SiameseModel(siamese_network)
+    def train(train_data, val_data, epoch_num=10):
+        siamese_model = SiameseModel(self.siamese_network)
         siamese_model.compile(optimizer=optimizers.Adam(0.0001))
-        siamese_model.fit(train_data, epochs=10, validation_data=val_data)
+        siamese_model.fit(train_data, epochs=epoch_num, validation_data=val_data)
 
     def test(self):
         """todo"""
