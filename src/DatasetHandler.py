@@ -34,7 +34,7 @@ class DatasetHandler:
         self.__target_shape = target_shape
         self.dataset_dir = dataset_dir
 
-        full_dataset = pd.read_csv(f'{self.dataset_dir}/{FULL_DATASET_FILE}', sep=' ')
+        full_dataset = pd.read_csv(f'{self.dataset_dir}{FULL_DATASET_FILE}', sep=' ')
         self.__dataset_partitions = split_dataset
 
         df_train, df_test = self.__split_dataset(full_dataset, dataset_part)
