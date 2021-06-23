@@ -24,10 +24,8 @@ class DistanceLayer(layers.Layer):
 
 class SiameseModel(Model):
     """The Siamese Network model with a custom training and testing loops.
-
     Computes the triplet loss using the three embeddings produced by the
     Siamese Network.
-
     The triplet loss is defined as:
        L(A, P, N) = max(‖f(A) - f(P)‖² - ‖f(A) - f(N)‖² + margin, 0)
     """
@@ -88,7 +86,7 @@ class SiameseModel(Model):
         return [self.loss_tracker]
 
 
-class Model:
+class EmbeddingModel:
     def __init__(self, target_shape):
         base_cnn = resnet.ResNet50(
             weights="imagenet", input_shape=target_shape + (3,), include_top=False
@@ -101,7 +99,7 @@ class Model:
         dense2 = layers.BatchNormalization()(dense2)
         output = layers.Dense(256)(dense2)
 
-        embedding = Model(base_cnn.input, output, name="Embedding")
+        self.embedding = Model(base_cnn.input, output, name="Embedding")
 
         trainable = False
         for layer in base_cnn.layers:
@@ -114,10 +112,10 @@ class Model:
         negative_input = layers.Input(name="negative", shape=target_shape + (3,))
 
         distances = DistanceLayer()(
-            embedding(resnet.preprocess_input(anchor_input)),
-            embedding(resnet.preprocess_input(positive_input)),
-            embedding(resnet.preprocess_input(negative_input)),
-        )
+             self.embedding(resnet.preprocess_input(anchor_input)),
+             self.embedding(resnet.preprocess_input(positive_input)),
+             self.embedding(resnet.preprocess_input(negative_input)),
+        ) 
 
         self.siamese_network = Model(
             inputs=[anchor_input, positive_input, negative_input], outputs=distances
