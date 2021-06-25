@@ -14,12 +14,13 @@ class DistanceLayer(layers.Layer):
     """
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super(DistanceLayer,self).__init__(**kwargs)
 
     def call(self, anchor, positive, negative):
         ap_distance = tf.reduce_sum(tf.square(anchor - positive), -1)
         an_distance = tf.reduce_sum(tf.square(anchor - negative), -1)
         return ap_distance, an_distance
+
 
 
 class SiameseModel(Model):
@@ -48,7 +49,7 @@ class SiameseModel(Model):
         # `compile()`.
         with tf.GradientTape() as tape:
             loss = self._compute_loss(data)
-
+            loss = loss[loss != 0]
         # Storing the gradients of the loss function with respect to the
         # weights/parameters.
         gradients = tape.gradient(loss, self.siamese_network.trainable_weights)
@@ -95,13 +96,14 @@ class EmbeddingModel:
         )
 
         flatten = layers.Flatten()(base_cnn.output)
-        dense1 = layers.Dense(512, activation="relu")(flatten)
-        dense1 = layers.BatchNormalization()(dense1)
-        dense2 = layers.Dense(256, activation="relu")(dense1)
-        dense2 = layers.BatchNormalization()(dense2)
-        output = layers.Dense(256)(dense2)
+        dense = layers.Dense(1024, activation="tanh")(flatten)
+        batch_norm = layers.BatchNormalization()(dense)
+        dense = layers.Dense(512, activation="tanh")(batch_norm)
+        batch_norm = layers.BatchNormalization()(dense)
+        embedding = layers.Dense(256)(batch_norm)
+        output_layer = layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))(embedding)
 
-        self.embedding = Model(base_cnn.input, output, name="Embedding")
+        self.embedding = Model(base_cnn.input, output_layer, name="Embedding")
 
         trainable = False
         for layer in base_cnn.layers:
@@ -125,15 +127,15 @@ class EmbeddingModel:
 
     def get_siamese_network(self):
         return self.siamese_network
-        
+
     def get_embedding(self):
         return self.embedding
-        
-    def train(self, train_data, val_data, epoch_num=10):
+
+    def train(self, train_data, val_data, epoch_num=10, optimizer='adam'):
         siamese_model = SiameseModel(self.siamese_network)
-        siamese_model.compile(optimizer=optimizers.Adam(0.0001))
-        siamese_model.fit(train_data, epochs=epoch_num, validation_data=val_data)    
-    
+        siamese_model.compile(optimizer=optimizer)
+        siamese_model.fit(train_data, epochs=epoch_num, validation_data=val_data)
+
     def test(self):
         """todo"""
 
