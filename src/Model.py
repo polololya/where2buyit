@@ -33,7 +33,7 @@ class SiameseModel(Model):
        L(A, P, N) = max(‖f(A) - f(P)‖² - ‖f(A) - f(N)‖² + margin, 0)
     """
 
-    def __init__(self, siamese_network, margin=0.5):
+    def __init__(self, siamese_network, margin=0.05):
         super(SiameseModel, self).__init__()
         self.siamese_network = siamese_network
         self.margin = margin
@@ -49,7 +49,7 @@ class SiameseModel(Model):
         # `compile()`.
         with tf.GradientTape() as tape:
             loss = self._compute_loss(data)
-            loss = loss[loss != 0]
+
         # Storing the gradients of the loss function with respect to the
         # weights/parameters.
         gradients = tape.gradient(loss, self.siamese_network.trainable_weights)
