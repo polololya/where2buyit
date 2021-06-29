@@ -21,8 +21,8 @@ def preprocess_image(TARGET_SHAPE,filename: tf.Tensor):
     return image
 full_dataset = pd.read_csv(f'{DATASET_DIR}{FULL_DATASET_FILE}', sep=' ')
 embeddings=pd.DataFrame([])
-#n=len(full_dataset)
-n=10
+n=len(full_dataset)
+#n=10
 embedding_model = EmbeddingModel(target_shape=TARGET_SHAPE)
 embedding_model.load_weights(PATH_MODEL)
 for i in range (n):#работает очень медленно, но я не знаю как оптимизировать
