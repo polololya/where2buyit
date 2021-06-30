@@ -14,6 +14,6 @@ input_arr=tf.image.resize(input_arr, TARGET_SHAPE)
 input_arr = np.array([input_arr])
 target=pd.DataFrame(embedding_model.predict(input_arr))
 dataset=pf.iloc[:,:emb_size]
-similarityK=SimilarItem(target, dataset,K)
+similarityK=SimilarItem(target, dataset,K,DATASET_DIR)
 similarityK=similarityK.join(pf.iloc[similarityK.index,emb_size:])
 similar_visual(similarityK,'path',DATASET_DIR)
