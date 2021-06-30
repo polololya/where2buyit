@@ -28,7 +28,7 @@ def AvgPrecisionK(target_embedings,dataset_embedings,positive_indices,K):
     #по идее 24-27 быстрее, если target'ов много
     #k=np.array(list(map(lambda i: PrecisionK1(similarity5.iloc[i],positive_indices[i]),similarity5.index)))
     return k
-def similar_visual(similarityK,column):#принимает эмбединги похожих и столбец в котором хранится путь к изображениям
+def similar_visual(similarityK,column,DATASET_DIR=''):#принимает эмбединги похожих и столбец в котором хранится путь к изображениям
     pic_box = plt.figure()
     i=1
     n=len(similarityK)
