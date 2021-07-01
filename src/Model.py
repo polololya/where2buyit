@@ -1,141 +1,151 @@
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras import optimizers
-from tensorflow.keras import metrics
-from tensorflow.keras import Model
 from tensorflow.keras.applications import resnet
 
 
-class DistanceLayer(layers.Layer):
-    """
-    This layer is responsible for computing the distance between the anchor
-    embedding and the positive embedding, and the anchor embedding and the
-    negative embedding.
-    """
+class TripletHardLoss(tf.keras.losses.Loss):
 
-    def __init__(self, **kwargs):
-        super(DistanceLayer,self).__init__(**kwargs)
+    def __init__(self, margin=0.5, squared=True):
+        super().__init__()
+        self.__margin = margin
+        self.__squared = squared
 
-    def call(self, anchor, positive, negative):
-        ap_distance = tf.reduce_sum(tf.square(anchor - positive), -1)
-        an_distance = tf.reduce_sum(tf.square(anchor - negative), -1)
-        return ap_distance, an_distance
+    @tf.autograph.experimental.do_not_convert
+    def call(self, y_true, y_pred):
+        labels = tf.convert_to_tensor(y_true, name="labels")
+        embeddings = tf.convert_to_tensor(y_pred, name="embeddings")
 
-
-
-class SiameseModel(Model):
-    """The Siamese Network model with a custom training and testing loops.
-    Computes the triplet loss using the three embeddings produced by the
-    Siamese Network.
-    The triplet loss is defined as:
-       L(A, P, N) = max(‖f(A) - f(P)‖² - ‖f(A) - f(N)‖² + margin, 0)
-    """
-
-    def __init__(self, siamese_network, margin=0.05):
-        super(SiameseModel, self).__init__()
-        self.siamese_network = siamese_network
-        self.margin = margin
-        self.loss_tracker = metrics.Mean(name="loss")
-
-    def call(self, inputs, **kwargs):
-        return self.siamese_network(inputs)
-
-    def train_step(self, data):
-        # GradientTape is a context manager that records every operation that
-        # you do inside. We are using it here to compute the loss so we can get
-        # the gradients and apply them using the optimizer specified in
-        # `compile()`.
-        with tf.GradientTape() as tape:
-            loss = self._compute_loss(data)
-
-        # Storing the gradients of the loss function with respect to the
-        # weights/parameters.
-        gradients = tape.gradient(loss, self.siamese_network.trainable_weights)
-
-        # Applying the gradients on the model using the specified optimizer
-        self.optimizer.apply_gradients(
-            zip(gradients, self.siamese_network.trainable_weights)
+        convert_to_float32 = (
+                embeddings.dtype == tf.dtypes.float16 or embeddings.dtype == tf.dtypes.bfloat16
+        )
+        precise_embeddings = (
+            tf.cast(embeddings, tf.dtypes.float32) if convert_to_float32 else embeddings
         )
 
-        # Let's update and return the training loss metric.
-        self.loss_tracker.update_state(loss)
-        return {"loss": self.loss_tracker.result()}
+        batch_size = tf.shape(precise_embeddings)[0]
+        adjacency_matrix = tf.matmul(labels, labels, transpose_b=True)
+        adjacency_matrix = tf.cast(adjacency_matrix, tf.bool)
+        negative_adjacency = tf.math.logical_not(adjacency_matrix)
+        negative_adjacency = tf.cast(negative_adjacency, dtype=tf.dtypes.float32)
+        positive_adjacency = tf.cast(adjacency_matrix, dtype=tf.dtypes.float32) - tf.eye(batch_size,
+                                                                                         dtype=tf.float32)
 
-    def test_step(self, data):
-        loss = self._compute_loss(data)
+        dist = self.__pairwise_distances(precise_embeddings)
 
-        # Let's update and return the loss metric.
-        self.loss_tracker.update_state(loss)
-        return {"loss": self.loss_tracker.result()}
+        distance_embeddings = tf.reshape(dist, [batch_size, batch_size])
 
-    def _compute_loss(self, data):
-        # The output of the network is a tuple containing the distances
-        # between the anchor and the positive example, and the anchor and
-        # the negative example.
-        ap_distance, an_distance = self.siamese_network(data)
+        hard_positives = self.__maximum_dist(distance_embeddings, positive_adjacency)
+        hard_negatives = self.__minimum_dist(distance_embeddings, negative_adjacency)
 
-        # Computing the Triplet Loss by subtracting both distances and
-        # making sure we don't get a negative value.
-        loss = ap_distance - an_distance
-        loss = tf.maximum(loss + self.margin, 0.0)
-        return loss
+        triplet_loss = tf.maximum(hard_positives - hard_negatives + self.__margin, 0.0)
+        triplet_loss = tf.reduce_mean(triplet_loss)
+        if convert_to_float32:
+            return tf.cast(triplet_loss, embeddings.dtype)
+        else:
+            return triplet_loss
 
-    @property
-    def metrics(self):
-        # We need to list our metrics here so the `reset_states()` can be
-        # called automatically.
-        return [self.loss_tracker]
+    def __minimum_dist(self, data, mask):
+        axis_maximums = tf.math.reduce_max(data, 1, keepdims=True)
+
+        masked_minimums = (
+                tf.math.reduce_min(
+                    tf.math.multiply(data - axis_maximums, mask), 1, keepdims=True
+                )
+                + axis_maximums
+        )
+        return masked_minimums
+
+    def __maximum_dist(self, data, mask):
+
+        masked_maximums = (
+            tf.math.reduce_max(
+                tf.math.multiply(data, mask), 1, keepdims=True
+            )
+        )
+
+        return masked_maximums
+
+    def __pairwise_distances(self, embeddings):
+        """
+        Рассчитать расстояние между векторами вложения
+        Args:
+                     embeddings: тензор в форме (batch_size, embed_dim)
+        Returns:
+                     piarwise_distances: тензор формы (batch_size, batch_size)
+        """
+
+        dot_product = tf.matmul(embeddings, tf.transpose(embeddings))
+
+        square_norm = tf.linalg.diag_part(dot_product)
+
+        distances = tf.expand_dims(square_norm, 0) - 2.0 * dot_product + tf.expand_dims(square_norm, 1)
+
+        distances = tf.maximum(distances, 0.0)
+
+        if not self.__squared:
+            mask = tf.cast(tf.equal(distances, 0.0), tf.float32)
+            distances = distances + mask * 1e-16
+
+            distances = tf.sqrt(distances)
+
+            distances = distances * (1.0 - mask)
+        return distances
 
 
-class EmbeddingModel:
-    def __init__(self, target_shape):
-        base_cnn = resnet.ResNet50(
+class EmbeddingModel(tf.keras.Model):
+
+    def __init__(self, target_shape, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.__base_cnn = resnet.ResNet50(
             weights="imagenet", input_shape=target_shape + (3,), include_top=False
         )
 
-        flatten = layers.Flatten()(base_cnn.output)
-        dense = layers.Dense(1024, activation="tanh")(flatten)
-        batch_norm = layers.BatchNormalization()(dense)
-        dense = layers.Dense(512, activation="tanh")(batch_norm)
-        batch_norm = layers.BatchNormalization()(dense)
-        embedding = layers.Dense(256)(batch_norm)
-        output_layer = layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))(embedding)
-
-        self.embedding = Model(base_cnn.input, output_layer, name="Embedding")
-
         trainable = False
-        for layer in base_cnn.layers:
+        for layer in self.__base_cnn.layers:
             if layer.name == "conv5_block1_out":
                 trainable = True
             layer.trainable = trainable
 
-        anchor_input = layers.Input(name="anchor", shape=target_shape + (3,))
-        positive_input = layers.Input(name="positive", shape=target_shape + (3,))
-        negative_input = layers.Input(name="negative", shape=target_shape + (3,))
+        self.__conv_1 = tf.keras.layers.Conv2D(128, kernel_size=(7, 7), padding='same', activation='relu')
+        self.__pooling_1 = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+        self.__conv_2 = tf.keras.layers.Conv2D(256, kernel_size=(5, 5), padding='same', activation='relu')
+        self.__pooling_2 = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+        self.__flatten_1 = tf.keras.layers.Flatten()
+        self.__dense_1 = tf.keras.layers.Dense(1024, activation="relu")
+        self.__batch_norm_1 = tf.keras.layers.BatchNormalization()
+        self.__dense_2 = tf.keras.layers.Dense(512, activation="relu")
+        self.__batch_norm_2 = tf.keras.layers.BatchNormalization()
+        self.__embedding = tf.keras.layers.Dense(256, kernel_regularizer='l2')
 
-        distances = DistanceLayer()(
-            self.embedding(resnet.preprocess_input(anchor_input)),
-            self.embedding(resnet.preprocess_input(positive_input)),
-            self.embedding(resnet.preprocess_input(negative_input)),
-        )
+    @tf.autograph.experimental.do_not_convert
+    def call(self, inputs, training=None, mask=None):
+        layer = self.__base_cnn(inputs)
+        layer = self.__conv_1(layer)
+        layer = self.__pooling_1(layer)
+        layer = self.__conv_2(layer)
+        layer = self.__pooling_2(layer)
+        layer = self.__flatten_1(layer)
+        # layer = self.__dense_1(layer)
+        # layer = self.__batch_norm_1(layer)
+        layer = self.__dense_2(layer)
+        layer = self.__batch_norm_2(layer)
+        layer = self.__embedding(layer)
+        return layer
 
-        self.siamese_network = Model(
-            inputs=[anchor_input, positive_input, negative_input], outputs=distances
-        )
+    def get_config(self):
+        return {
+            '__flatten_1': self.__flatten_1,
+            '__dense_2': self.__dense_2,
+            '__batch_norm_2': self.__batch_norm_2,
+            '__embedding': self.__embedding,
+            '__base_cnn': self.__base_cnn,
+            '__dense_1': self.__dense_1,
+            '__batch_norm_1': self.__batch_norm_1,
+            '__conv_1': self.__conv_1,
+            '__conv_2': self.__conv_2,
+            '__pooling_1': self.__pooling_1,
+            '__pooling_2': self.__pooling_2
+        }
 
-    def get_siamese_network(self):
-        return self.siamese_network
-
-    def get_embedding(self):
-        return self.embedding
-
-    def train(self, train_data, val_data, epoch_num=10, optimizer='adam'):
-        siamese_model = SiameseModel(self.siamese_network)
-        siamese_model.compile(optimizer=optimizer)
-        siamese_model.fit(train_data, epochs=epoch_num, validation_data=val_data)
-
-    def test(self):
-        """todo"""
-
-    def inference(self):
-        """todo"""
+    def from_config(cls, config, custom_objects=None):
+        return cls(**config)
