@@ -37,6 +37,7 @@ def AvgPrecisionK(target_embedings, dataset_embedings, positive_indices, K):
 
 
 def similar_visual(similarityK, column):  # принимает эмбединги похожих и столбец в котором хранится путь к изображениям
+
     pic_box = plt.figure()
     i = 1
     n = len(similarityK)

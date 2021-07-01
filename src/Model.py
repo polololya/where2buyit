@@ -25,10 +25,8 @@ class DistanceLayer(layers.Layer):
 
 class SiameseModel(Model):
     """The Siamese Network model with a custom training and testing loops.
-
     Computes the triplet loss using the three embeddings produced by the
     Siamese Network.
-
     The triplet loss is defined as:
        L(A, P, N) = max(‖f(A) - f(P)‖² - ‖f(A) - f(N)‖² + margin, 0)
     """
