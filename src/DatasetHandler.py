@@ -34,21 +34,20 @@ class DatasetHandler:
         self.__target_shape = target_shape
         self.dataset_dir = dataset_dir
 
-        full_dataset = pd.read_csv(f'{self.dataset_dir}/{FULL_DATASET_FILE}', sep=' ')
+        full_dataset = pd.read_csv(f'{self.dataset_dir}{FULL_DATASET_FILE}', sep=' ')
         self.__dataset_partitions = split_dataset
 
         df_train, df_test = self.__split_dataset(full_dataset, dataset_part)
 
         # Train/test triplets
 
-        tqdm.write(f'Train generating')
-        train_triplets = self.__generate_triplets(df_train)
+        train_triplets = self.__generate_triplets(df_train, description='Train generating')
         self.__train_dataset = self.__seal_dataset(train_triplets)
-        self.__train_dataset = self.__train_dataset.batch(batch_size).prefetch(2)
-        tqdm.write(f'Test generating')
-        test_triplets = self.__generate_triplets(df_test)
-        self.__test_dataset = self.__seal_dataset(test_triplets)
-        self.__test_dataset = self.__test_dataset.batch(batch_size).prefetch(2)
+        self.__train_dataset = self.__train_dataset.shuffle(batch_size * 4).batch(batch_size).prefetch(2)
+
+        test_triplets = self.__generate_triplets(df_test, description='Test generating')
+        self.__test_dataset = self.__seal_dataset(test_triplets, augmentation=False)
+        self.__test_dataset = self.__test_dataset.shuffle(batch_size * 2).batch(batch_size).prefetch(2)
 
     def __split_dataset(self, data: pd.DataFrame, dataset_part: float):
         """
@@ -86,19 +85,22 @@ class DatasetHandler:
 
         return anchor, positive, negative
 
-    def __generate_triplets(self, data: pd.DataFrame):
+    def __generate_triplets(self, data: pd.DataFrame, description='Генерация триплета'):
         """
         Генерация триплетов, на данном этапе хранятся лишь пути к изображениям
         """
         triplets = {'anchors': [], 'positive': [], 'negative': []}
-        for i in tqdm(range(data.shape[0])):
-            anchor, positive, negative = self.__form_triplet(i, data)
+        data_indexes = set(range(data.shape[0]))
+        for _ in tqdm(range(data.shape[0]), desc=description):
+            index_choice = choice(list(data_indexes))
+            data_indexes.remove(index_choice)
+            anchor, positive, negative = self.__form_triplet(index_choice, data)
             triplets['anchors'].append(f'{self.dataset_dir}{anchor["path"]}')
             triplets['positive'].append(f'{self.dataset_dir}{positive["path"]}')
             triplets['negative'].append(f'{self.dataset_dir}{negative["path"]}')
         return triplets
 
-    def __seal_dataset(self, data: dict):
+    def __seal_dataset(self, data: dict, augmentation=True):
         """
         Получение триплета из целевого изображения, похожего на него и отличного от него.
         """
@@ -107,11 +109,14 @@ class DatasetHandler:
         negative_dataset = tf.data.Dataset.from_tensor_slices(data['negative'])
 
         triplets_path_dataset = tf.data.Dataset.zip((anchor_dataset, positive_dataset, negative_dataset))
-        triplets_images_dataset = triplets_path_dataset.map(self.__preprocess_triplets).map(
-            self.__augmentation_triplets)
+        triplets_images_dataset = triplets_path_dataset.map(self.__preprocess_triplets)
+
+        if augmentation:
+            triplets_images_dataset = triplets_images_dataset.map(self.__augmentation_triplets)
 
         return triplets_images_dataset
 
+    @tf.autograph.experimental.do_not_convert
     def __augmentation_triplets(self, anchor, positive, negative):
 
         """
@@ -139,9 +144,10 @@ class DatasetHandler:
 
         aug_image = tf.image.random_flip_left_right(image)
         aug_image = tf.image.random_flip_up_down(aug_image)
-        aug_image = tf.image.random_brightness(aug_image, max_delta=0.3)
-        aug_image = tf.image.random_contrast(aug_image, lower=0.6, upper=1)
-        aug_image = tf.image.random_saturation(aug_image, 0.6, 1)
+        aug_image = tf.image.random_hue(aug_image, 0.08)
+        aug_image = tf.image.random_saturation(aug_image, 0.6, 1.6)
+        aug_image = tf.image.random_brightness(aug_image, 0.05)
+        aug_image = tf.image.random_contrast(aug_image, 0.7, 1.3)
         aug_image = tf.image.rot90(aug_image, k=randint(0, 3))
         return aug_image
 
@@ -185,7 +191,6 @@ class DatasetHandler:
 
     """
     Метод для получения test dataset
-    
     
     """
 
