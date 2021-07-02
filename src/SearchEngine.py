@@ -36,7 +36,7 @@ def AvgPrecisionK(target_embedings, dataset_embedings, positive_indices, K):
     return k
 
 
-def similar_visual(similarityK, column):  # принимает эмбединги похожих и столбец в котором хранится путь к изображениям
+def similar_visual(similarityK, column,DATASET_DIR=''):  # принимает эмбединги похожих и столбец в котором хранится путь к изображениям
 
     pic_box = plt.figure()
     i = 1
@@ -45,7 +45,7 @@ def similar_visual(similarityK, column):  # принимает эмбединг�
     row = math.ceil(n / col)
     for value in similarityK.loc[:, column]:
         # imread не читает путь с русскими буквами
-        picture = cv2.imread(value)
+        picture = cv2.imread(DATASET_DIR+value)
         # конвертируем BGR изображение в RGB
         picture = cv2.cvtColor(picture, cv2.COLOR_BGR2RGB)
         # добавляем ячейку в pix_box для вывода текущего изображения
